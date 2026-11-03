@@ -312,7 +312,7 @@ nav.tabs button { position: relative; }
         <div id="fsSplit" hidden class="card" style="gap:8px;background:#FFF7ED;border-color:#FDBA74"><div id="fsSplitText"></div><button class="btn primary" type="button" id="btnSplitCity">Ranger par ville</button></div>
         <div><label class="f" for="fsPeriod">Période</label><select class="t" id="fsPeriod"><option value="today">Aujourd’hui</option><option value="week">7 derniers jours</option><option value="month">30 derniers jours</option><option value="all">Tout</option></select></div>
         <div id="fsDateBox" hidden><label class="f" for="fsDate">Date des portes</label><input class="t" type="date" id="fsDate"><div class="hint" id="fsDateInfo"></div></div>
-        <label class="check"><input type="checkbox" id="fsSkipEmpty">Sans les absents où je n’ai rien noté</label>
+        <label class="check"><input type="checkbox" id="fsSkipEmpty">Sans les absents où il n’y a rien (ou juste « Propre »)</label>
         <label class="check"><input type="checkbox" id="fsContactsOnly">Seulement les portes avec un nom ou un téléphone</label>
         <button class="btn primary" type="button" id="btnExportFiche">Exporter la fiche de suivi</button>
         <details class="fold" id="fsMoveBox"><summary><span><span class="s-t">Changer le secteur de ces portes</span><span class="s-v" id="fsMoveInfo"></span></span></summary><div class="fold-body">
@@ -1928,9 +1928,10 @@ function renderSecteurPick() {
 renderSecteurPick();
 $('fsPick').addEventListener('change', renderDayPick);
 function hasNoted(d) { // un absent compte s'il y a quelque chose de vu ou d'écrit
-  return !!((d.roof || []).length || (d.tags || []).length || d.heat || String(d.note || '').trim() || (d.photos || []).length || hasContact(d));
+  var tags = (d.tags || []).filter(function (t) { return !/^propres?$/i.test(String(t).trim()); }); // « Propre » seul ne sert à rien sur la feuille
+  return !!((d.roof || []).length || tags.length || d.heat || String(d.note || '').trim() || (d.photos || []).length || hasContact(d));
 }
-(function () { var c = $('fsSkipEmpty'); c.checked = !!S.settings.skipEmpty; c.addEventListener('change', function () { S.settings.skipEmpty = c.checked; persist(); }); })();
+(function () { var c = $('fsSkipEmpty'); c.checked = S.settings.skipEmpty !== false; c.addEventListener('change', function () { S.settings.skipEmpty = c.checked; persist(); }); })();
 function curPeriod() { var v = $('fsPeriod').value; return v === 'pick' ? 'd:' + ($('fsDate').value || ymd(new Date())) : v; }
 function renderDateBox() {
   var on = $('fsPeriod').value === 'pick'; $('fsDateBox').hidden = !on; if (!on) return;
