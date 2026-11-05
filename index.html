@@ -1874,8 +1874,9 @@ function tournees(list) { // une tournée = des portes sans pause de plus d'une 
   var me = typeof Sync !== 'undefined' && Sync.me() ? Sync.me().id : null;
   ds.forEach(function (d) {
     var t = new Date(d.createdAt).getTime();
-    if (!cur || t - cur.to > 3600000) { cur = { from: t, to: t, n: 0, mates: [] }; out.push(cur); }
+    if (!cur || t - cur.to > 3600000) { cur = { from: t, to: t, n: 0, mates: [], secs: [] }; out.push(cur); }
     cur.to = t; cur.n++;
+    var sc = secOf(d) || 'Sans secteur'; if (cur.secs.indexOf(sc) === -1) cur.secs.push(sc);
     [[d.by, d.byName]].concat((d.with || []).map(function (id, i) { return [id, (d.withNames || [])[i]]; })).forEach(function (p) {
       if (p[0] && p[0] !== me && p[1]) { var n = firstName(p[1]); if (cur.mates.indexOf(n) === -1) cur.mates.push(n); }
     });
@@ -1886,15 +1887,18 @@ function tournees(list) { // une tournée = des portes sans pause de plus d'une 
 function renderDayPick() {
   var el = $('fsPeriod'); if (!el) return;
   var keep = el.value, pick = ($('fsPick') && $('fsPick').value) || ('s:' + curSecteur()), days = {}, byDay = {};
-  S.doors.forEach(function (d) { if (pick !== 'all' && secOf(d) !== pick.slice(2)) return; var k = ymd(new Date(d.createdAt)); days[k] = (days[k] || 0) + 1; (byDay[k] = byDay[k] || []).push(d); });
+  S.doors.forEach(function (d) {
+    var k = ymd(new Date(d.createdAt)); (byDay[k] = byDay[k] || []).push(d); // tournées : tous secteurs confondus
+    if (pick === 'all' || secOf(d) === pick.slice(2)) days[k] = (days[k] || 0) + 1;
+  });
   var JOURS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
-  var opts = Object.keys(days).sort().reverse().map(function (k) {
+  var opts = Object.keys(byDay).sort().reverse().map(function (k) {
     var dt = new Date(k + 'T12:00:00');
     var lab = JOURS[dt.getDay()] + ' ' + String(dt.getDate()).padStart(2, '0') + '/' + String(dt.getMonth() + 1).padStart(2, '0');
     var tours = tournees(byDay[k]);
-    return '<option value="d:' + k + '">' + lab + ' · ' + (tours.length > 1 ? 'toute la journée · ' : '') + days[k] + ' porte' + (days[k] > 1 ? 's' : '') + '</option>' +
+    return (days[k] ? '<option value="d:' + k + '">' + lab + ' · ' + (tours.length > 1 ? 'toute la journée · ' : '') + days[k] + ' porte' + (days[k] > 1 ? 's' : '') + '</option>' : '') +
       (tours.length > 1 ? tours.map(function (t) {
-        return '<option value="t:' + t.from + '-' + t.to + '">' + lab + ' · ' + t.label + ' ' + hm(t.from) + '–' + hm(t.to) + ' · ' + t.n + ' porte' + (t.n > 1 ? 's' : '') + (t.mates.length ? ' · avec ' + esc(t.mates.join(', ')) : ' · seul') + '</option>';
+        return '<option value="t:' + t.from + '-' + t.to + '">' + lab + ' · ' + t.label + ' ' + hm(t.from) + '–' + hm(t.to) + ' · ' + t.n + ' porte' + (t.n > 1 ? 's' : '') + (t.mates.length ? ' · avec ' + esc(t.mates.join(', ')) : ' · seul') + (t.secs.length ? ' · ' + esc(t.secs.join(', ')) : '') + '</option>';
       }).join('') : '');
   }).join('');
   el.innerHTML = '<option value="today">Aujourd’hui</option><option value="week">7 derniers jours</option><option value="month">30 derniers jours</option><option value="all">Tout</option><option value="pick">Choisir une date…</option>' +
@@ -1956,7 +1960,7 @@ function selDoors(withChecks) {
   else if (period === 'week' || period === 'month') { var f = new Date(); f.setDate(f.getDate() - (period === 'week' ? 6 : 29)); from = ymd(f); }
   var skipEmpty = withChecks && $('fsSkipEmpty').checked, onlyContacts = withChecks && $('fsContactsOnly').checked, pick = $('fsPick').value || ('s:' + curSecteur());
   return S.doors.filter(function (d) {
-    if (pick !== 'all' && secOf(d) !== pick.slice(2)) return false;
+    if (!tour && pick !== 'all' && secOf(d) !== pick.slice(2)) return false; // une tournée prend toutes ses portes
     if (from && ymd(new Date(d.createdAt)) < from) return false;
     if (day && ymd(new Date(d.createdAt)) !== day) return false;
     if (tour) { var tt = new Date(d.createdAt).getTime(); if (tt < tour[0] || tt > tour[1]) return false; }
@@ -1976,7 +1980,10 @@ $('btnMoveSec').addEventListener('click', function () {
   var list = selDoors(false), now = new Date().toISOString();
   if (!list.length) { toast('Aucune porte sur cette sélection.'); return; }
   list.forEach(function (d) { d.secteur = name; d.updatedAt = now; });
-  persist(); renderSecteurPick(); $('fsPick').value = 's:' + name; renderDayPick(); renderMoveInfo();
+  var keepPer = $('fsPeriod').value;
+  persist(); renderSecteurPick(); $('fsPick').value = 's:' + name; renderDayPick();
+  if ($('fsPeriod').querySelector('option[value="' + keepPer + '"]')) $('fsPeriod').value = keepPer;
+  renderMoveInfo();
   $('fsMoveName').value = ''; $('fsMoveBox').open = false;
   toast(list.length + ' porte' + (list.length > 1 ? 's' : '') + ' rangée' + (list.length > 1 ? 's' : '') + ' dans « ' + name + ' »');
 });
@@ -1985,6 +1992,7 @@ $('btnExportFiche').addEventListener('click', function () {
   var pick = $('fsPick').value || ('s:' + curSecteur());
   var list = selDoors(true).slice().sort(function (a, b) { return String(a.createdAt).localeCompare(String(b.createdAt)); });
   if (!list.length) { toast('Aucune porte sur cette période.'); return; }
+  if (tour) { var secs = []; list.forEach(function (d) { if (secs.indexOf(secOf(d)) === -1) secs.push(secOf(d)); }); pick = secs.length === 1 ? 's:' + secs[0] : 'all'; }
   var secteur = pick === 'all' ? 'tous-secteurs' : pick.slice(2), atc = (S.settings.ficheAtc || '').trim();
   var rowsX = [], groups = {}, order = [];
   var lines = [];
